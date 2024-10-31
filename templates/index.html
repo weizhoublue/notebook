@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>记事本</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: row;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+        }
+        #notepad-list {
+            width: 25%;
+            border-right: 1px solid #ccc;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        #main-content {
+            flex-grow: 1;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        #note-editor {
+            width: 100%;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        #editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #operation-type {
+            margin-right: 10px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        #edit-title {
+            flex-grow: 1;
+            padding: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        #edit-body {
+            width: 100%;
+            flex-grow: 1;
+            padding: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+            resize: none;
+            overflow-y: auto;
+        }
+        .button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            white-space: nowrap;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        a {
+            text-decoration: none;
+            color: black;
+        }
+        a.active {
+            color: green;
+        }
+        .delete-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+        #alert-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            display: none;
+            z-index: 1000;
+        }
+        #alert-box.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        #alert-box button {
+            margin-top: 10px;
+            background-color: #721c24;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="notepad-list">
+        <button class="button" onclick="showCreateForm()">创建记事本</button>
+        <ul id="note-list">
+            {{range .}}
+            <li>
+                <a href="#" onclick="editNote('{{.}}', this)">{{.}}</a>
+                <button class="delete-button" onclick="deleteNote('{{.}}')">删除</button>
+            </li>
+            {{end}}
+        </ul>
+    </div>
+    <div id="main-content">
+        <div id="note-editor">
+            <div id="editor-header">
+                <span id="operation-type">创建</span>
+                <input type="text" name="title" id="edit-title" placeholder="记事本标题" />
+                <button class="button" onclick="saveNote()">保存</button>
+            </div>
+            <form id="edit-form" method="post" style="flex-grow: 1; display: flex; flex-direction: column;">
+                <input type="hidden" name="isEdit" id="isEdit" value="false" />
+                <textarea name="body" id="edit-body" placeholder="记事本内容"></textarea>
+            </form>
+        </div>
+    </div>
+
+    <div id="alert-box">
+        <span id="alert-message"></span>
+        <button onclick="closeAlert()">关闭</button>
+    </div>
+
+    <script>
+        function showAlert(message, isSuccess) {
+            const alertBox = document.getElementById('alert-box');
+            const alertMessage = document.getElementById('alert-message');
+            alertMessage.textContent = message;
+            alertBox.className = isSuccess ? 'success' : '';
+            alertBox.style.display = 'block';
+
+            if (isSuccess) {
+                setTimeout(() => {
+                    alertBox.style.display = 'none';
+                }, 1000); // 1秒后自动关闭
+            }
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-box').style.display = 'none';
+        }
+
+        function showCreateForm() {
+            document.getElementById('note-editor').style.display = 'flex';
+            document.getElementById('operation-type').textContent = '创建';
+            document.getElementById('edit-title').value = '';
+            document.getElementById('edit-body').value = '';
+            document.getElementById('edit-form').action = '/create';
+            document.getElementById('isEdit').value = 'false';
+            clearActiveLinks();
+        }
+
+        function editNote(title, element) {
+            fetch('/view/' + title, { headers: { 'Accept': 'text/plain' } })
+                .then(response => response.text())
+                .then(body => {
+                    document.getElementById('note-editor').style.display = 'flex';
+                    document.getElementById('operation-type').textContent = '编辑';
+                    document.getElementById('edit-title').value = title;
+                    document.getElementById('edit-body').value = body;
+                    document.getElementById('edit-form').action = '/create';
+                    document.getElementById('isEdit').value = 'true';
+                    clearActiveLinks();
+                    if (element) {
+                        element.classList.add('active');
+                    }
+                });
+        }
+
+        function saveNote() {
+            const form = document.getElementById('edit-form');
+            const title = document.getElementById('edit-title').value.trim();
+            const body = document.getElementById('edit-body').value;
+
+            if (!title) {
+                showAlert("标题不能为空", false);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('body', body);
+            formData.append('isEdit', document.getElementById('isEdit').value);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+                showAlert("保存成功", true);
+                if (document.getElementById('isEdit').value === 'false') {
+                    addNoteToList(title);
+                }
+                editNote(title);
+            })
+            .catch(error => {
+                showAlert("保存失败: " + error.message, false);
+            });
+        }
+
+        function addNoteToList(title) {
+            const noteList = document.getElementById('note-list');
+            const existingNote = Array.from(noteList.children).find(li => li.textContent.includes(title));
+            if (existingNote) {
+                return;
+            }
+            const newNote = document.createElement('li');
+            newNote.innerHTML = `<a href="#" onclick="editNote('${title}', this)">${title}</a>
+                                 <button class="delete-button" onclick="deleteNote('${title}')">删除</button>`;
+            noteList.appendChild(newNote);
+        }
+
+        function deleteNote(title) {
+            if (confirm("确定要删除这个记事本吗？")) {
+                fetch('/delete/' + title, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+
+        function clearActiveLinks() {
+            const links = document.querySelectorAll('#notepad-list a');
+            links.forEach(link => link.classList.remove('active'));
+        }
+    </script>
+</body>
+</html> 
