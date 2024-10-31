@@ -2,6 +2,8 @@ package main
 
 import (
 	"archive/zip"
+	"embed"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -18,7 +20,10 @@ import (
 	"time"
 )
 
-var templates = template.Must(template.ParseGlob("templates/*.html"))
+//go:embed templates/*.html
+var templateFiles embed.FS
+
+var templates = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
 
 var (
 	workerHomePath string
