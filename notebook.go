@@ -388,7 +388,7 @@ func openBrowser(url string) {
 
 func backupCountHandler(w http.ResponseWriter, r *http.Request) {
 	logWithFuncName("Handling backup count request")
-	backupFiles, err := filepath.Glob("backup/*/*.zip")
+	backupFiles, err := filepath.Glob(filepath.Join(backupDir, "*/*.zip"))
 	if err != nil {
 		logWithFuncName(fmt.Sprintf("Error listing backup files: %v", err))
 		http.Error(w, "无法获取备份数量", http.StatusInternalServerError)
