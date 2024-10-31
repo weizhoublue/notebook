@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -19,8 +20,25 @@ import (
 
 var templates = template.Must(template.ParseGlob("templates/*.html"))
 
+var (
+	workerHomePath string
+	dataDir        string
+	backupDir      string
+)
+
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	// 获取当前用户的 home 目录
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatalf("Failed to get current user: %v", err)
+	}
+	workerHomePath = usr.HomeDir
+
+	// 设置数据目录和备份目录
+	dataDir = filepath.Join(workerHomePath, "Documents", "notebookData", "data")
+	backupDir = filepath.Join(workerHomePath, "Documents", "notebookData", "backup")
 }
 
 func logWithFuncName(message string) {
@@ -30,6 +48,15 @@ func logWithFuncName(message string) {
 }
 
 func main() {
+	// 打印程序工作的根目录
+	log.Printf("root directory: %s", workerHomePath)
+	log.Printf("data directory: %s", dataDir)
+	log.Printf("backup directory: %s", backupDir)
+
+	// 确保数据目录和备份目录存在
+	ensureDirExists(dataDir)
+	ensureDirExists(backupDir)
+
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/view/", viewHandler)
 	http.HandleFunc("/create", createHandler)
@@ -52,10 +79,19 @@ func main() {
 	select {}
 }
 
+func ensureDirExists(dir string) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, 0755)
+		if err != nil {
+			log.Fatalf("Failed to create directory %s: %v", dir, err)
+		}
+	}
+}
+
 func backupData(dirName string) {
 	logWithFuncName(fmt.Sprintf("Starting backup for directory: %s", dirName))
 	timestamp := time.Now().Format("20060102_150405")
-	backupDir := filepath.Join("backup", dirName)
+	backupDir := filepath.Join(backupDir, dirName)
 	backupFile := filepath.Join(backupDir, fmt.Sprintf("%s.zip", timestamp))
 
 	err := os.MkdirAll(backupDir, 0755)
@@ -64,7 +100,7 @@ func backupData(dirName string) {
 		return
 	}
 
-	err = zipDirectory(filepath.Join("data", dirName), backupFile)
+	err = zipDirectory(filepath.Join(dataDir, dirName), backupFile)
 	if err != nil {
 		logWithFuncName(fmt.Sprintf("Error creating backup zip: %v", err))
 		return
@@ -168,7 +204,7 @@ func createHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		dirPath := filepath.Join("data", dirName)
+		dirPath := filepath.Join(dataDir, dirName)
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 			logWithFuncName(fmt.Sprintf("Directory %s does not exist", dirPath))
 			http.Error(w, "目录不存在", http.StatusNotFound)
@@ -216,7 +252,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		dirPath := filepath.Join("data", dirName)
+		dirPath := filepath.Join(dataDir, dirName)
 		oldFilePath := filepath.Join(dirPath, oldTitle+".txt")
 		newFilePath := filepath.Join(dirPath, newTitle+".txt")
 
@@ -265,7 +301,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 
 func listNotesHandler(w http.ResponseWriter, r *http.Request) {
 	dirName := r.URL.Query().Get("dirName")
-	dirPath := filepath.Join("data", dirName)
+	dirPath := filepath.Join(dataDir, dirName)
 
 	files, err := filepath.Glob(filepath.Join(dirPath, "*.txt"))
 	if err != nil {
@@ -284,7 +320,7 @@ func listNotesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func listDirsHandler(w http.ResponseWriter, r *http.Request) {
-	dirs, err := filepath.Glob("data/*")
+	dirs, err := filepath.Glob(dataDir + "/*")
 	if err != nil {
 		logWithFuncName(fmt.Sprintf("Error listing directories: %v", err))
 		http.Error(w, "无法获取目录列表", http.StatusInternalServerError)
@@ -305,7 +341,7 @@ func listDirsHandler(w http.ResponseWriter, r *http.Request) {
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	dirName := r.URL.Query().Get("dirName")
 	title := r.URL.Path[len("/view/"):]
-	filePath := filepath.Join("data", dirName, title+".txt")
+	filePath := filepath.Join(dataDir, dirName, title+".txt")
 
 	body, err := os.ReadFile(filePath)
 	if err != nil {
@@ -362,7 +398,7 @@ func backupCountHandler(w http.ResponseWriter, r *http.Request) {
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	logWithFuncName("Handling index request")
-	dirs, err := filepath.Glob("data/*")
+	dirs, err := filepath.Glob(dataDir + "/*")
 	if err != nil {
 		logWithFuncName(fmt.Sprintf("Error globbing directories: %v", err))
 		http.Error(w, "Error reading directories", http.StatusInternalServerError)
@@ -388,7 +424,7 @@ func createDirHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		dirPath := filepath.Join("data", dirName)
+		dirPath := filepath.Join(dataDir, dirName)
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 			err = os.Mkdir(dirPath, 0755)
 			if err != nil {
@@ -416,7 +452,7 @@ func deleteDirHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		dirPath := filepath.Join("data", dirName)
+		dirPath := filepath.Join(dataDir, dirName)
 		if _, err := os.Stat(dirPath); !os.IsNotExist(err) {
 			err = os.RemoveAll(dirPath)
 			if err != nil {
@@ -439,7 +475,7 @@ func deleteDirHandler(w http.ResponseWriter, r *http.Request) {
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	dirName := r.URL.Query().Get("dirName")
 	title := r.URL.Path[len("/delete/"):]
-	filePath := filepath.Join("data", dirName, title+".txt")
+	filePath := filepath.Join(dataDir, dirName, title+".txt")
 
 	err := os.Remove(filePath)
 	if err != nil {
@@ -455,7 +491,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 func deleteAllHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		dirName := strings.TrimSpace(r.FormValue("dirName"))
-		dirPath := filepath.Join("data", dirName)
+		dirPath := filepath.Join(dataDir, dirName)
 
 		files, err := filepath.Glob(filepath.Join(dirPath, "*.txt"))
 		if err != nil {
