@@ -1,15 +1,20 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"time"
 )
 
 var templates = template.Must(template.ParseGlob("templates/*.html"))
@@ -33,6 +38,7 @@ func main() {
 	http.HandleFunc("/delete/", deleteHandler)
 	http.HandleFunc("/delete-all", deleteAllHandler)
 	http.HandleFunc("/search", searchHandler)
+	http.HandleFunc("/backup-count", backupCountHandler)
 
 	// 启动服务器
 	go func() {
@@ -45,6 +51,137 @@ func main() {
 
 	// 阻止主协程退出
 	select {}
+}
+
+func backupData() {
+	// 获取当前时间戳
+	timestamp := time.Now().Format("20060102_150405")
+	backupDir := "backup/" + timestamp
+
+	// 管理备份数量
+	manageBackups()
+
+	// 创建备份目录
+	err := os.MkdirAll(backupDir, 0755)
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error creating backup directory: %v", err))
+		return
+	}
+
+	// 复制 data 目录中的文件到备份目录
+	files, err := filepath.Glob("data/*.txt")
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error globbing files for backup: %v", err))
+		return
+	}
+
+	for _, file := range files {
+		// 获取文件名
+		fileName := filepath.Base(file)
+		backupFilePath := filepath.Join(backupDir, fileName)
+
+		// 复制文件
+		input, err := os.ReadFile(file)
+		if err != nil {
+			logWithFuncName(fmt.Sprintf("Error reading file %s for backup: %v", file, err))
+			continue
+		}
+
+		err = os.WriteFile(backupFilePath, input, 0644)
+		if err != nil {
+			logWithFuncName(fmt.Sprintf("Error writing backup file %s: %v", backupFilePath, err))
+		}
+	}
+
+	// 压缩整个备份目录
+	tarGzPath := backupDir + ".tar.gz"
+	err = compressDirectory(backupDir, tarGzPath)
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error compressing backup directory %s: %v", backupDir, err))
+		return
+	}
+
+	// 删除未压缩的备份目录
+	err = os.RemoveAll(backupDir)
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error removing uncompressed backup directory %s: %v", backupDir, err))
+	}
+
+	logWithFuncName(fmt.Sprintf("Data backup completed at %s", timestamp))
+}
+
+func compressDirectory(source, target string) error {
+	tarFile, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer tarFile.Close()
+
+	gzipWriter := gzip.NewWriter(tarFile)
+	defer gzipWriter.Close()
+
+	tarWriter := tar.NewWriter(gzipWriter)
+	defer tarWriter.Close()
+
+	return filepath.Walk(source, func(file string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Create a new tar header from the file info
+		header, err := tar.FileInfoHeader(fi, fi.Name())
+		if err != nil {
+			return err
+		}
+
+		// Update the name to maintain the directory structure
+		header.Name, err = filepath.Rel(filepath.Dir(source), file)
+		if err != nil {
+			return err
+		}
+
+		// Write the header to the tar file
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return err
+		}
+
+		// If the file is a directory, we don't need to copy the file content
+		if fi.IsDir() {
+			return nil
+		}
+
+		// Open the file for reading
+		f, err := os.Open(file)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		// Copy the file content to the tar file
+		_, err = io.Copy(tarWriter, f)
+		return err
+	})
+}
+
+func manageBackups() {
+	backupFiles, err := filepath.Glob("backup/*.tar.gz")
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error listing backup files: %v", err))
+		return
+	}
+
+	// 如果备份数量超过 50，删除最老的备份
+	if len(backupFiles) > 50 {
+		sort.Strings(backupFiles) // 按时间戳排序
+		for _, file := range backupFiles[:len(backupFiles)-50] {
+			err := os.Remove(file)
+			if err != nil {
+				logWithFuncName(fmt.Sprintf("Error removing old backup file %s: %v", file, err))
+			} else {
+				logWithFuncName(fmt.Sprintf("Removed old backup file %s", file))
+			}
+		}
+	}
 }
 
 func openBrowser(url string) {
@@ -148,6 +285,7 @@ func createHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		logWithFuncName(fmt.Sprintf("Note with title %s created successfully", title))
+		backupData() // 在创建后进行备份
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -155,7 +293,6 @@ func createHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-
 	logWithFuncName(fmt.Sprintf("Received Request: %+v'", r))
 
 	if r.Method == http.MethodPost {
@@ -186,6 +323,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			logWithFuncName(fmt.Sprintf("Note with title %s edited successfully", newTitle))
+			backupData() // 在编辑后进行备份
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -213,6 +351,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		logWithFuncName(fmt.Sprintf("Note with title %s edited successfully", newTitle))
+		backupData() // 在编辑后进行备份
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -225,6 +364,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logWithFuncName(fmt.Sprintf("Error deleting file %s: %v", title, err))
 	}
+	backupData() // 在删除后进行备份
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -268,8 +408,22 @@ func deleteAllHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		logWithFuncName("All notes deleted successfully")
+		backupData() // 在删除所有后进行备份
 		w.WriteHeader(http.StatusOK)
 	} else {
 		http.Error(w, "无效的请求方法", http.StatusMethodNotAllowed)
 	}
+}
+
+func backupCountHandler(w http.ResponseWriter, r *http.Request) {
+	backupFiles, err := filepath.Glob("backup/*.tar.gz")
+	if err != nil {
+		logWithFuncName(fmt.Sprintf("Error listing backup files: %v", err))
+		http.Error(w, "无法获取备份数量", http.StatusInternalServerError)
+		return
+	}
+
+	count := len(backupFiles)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fmt.Sprintf(`{"count": %d}`, count)))
 }

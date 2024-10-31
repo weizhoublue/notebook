@@ -81,6 +81,17 @@
             white-space: nowrap;
             margin-left: 10px;
         }
+        .backup-count-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: default;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            white-space: nowrap;
+            margin-left: 10px;
+        }
         ul {
             list-style-type: none;
             padding: 0;
@@ -149,6 +160,7 @@
     <div id="notepad-list">
         <button class="button" onclick="showCreateForm()">创建记事本</button>
         <button class="delete-all-button" onclick="deleteAllNotes()">删除所有</button>
+        <button class="backup-count-button" id="backup-count">备份数量: 0</button>
         <ul id="note-list">
             {{range .}}
             <li>
@@ -241,6 +253,7 @@
                 setTimeout(() => {
                     loadNoteList(); // 重新加载记事本列表
                     document.getElementById('main-content').style.display = 'none'; // 隐藏编辑器
+                    updateBackupCount(); // 更新备份数量
                 }, 1000);
             })
             .catch(error => {
@@ -308,6 +321,7 @@
                     loadNoteList(); // 重新加载记事本列表
                     // 保持编辑器内容状态
                     document.getElementById('main-content').style.display = 'flex';
+                    updateBackupCount(); // 更新备份数量
                 }, 1000);
             })
             .catch(error => {
@@ -331,6 +345,7 @@
                 fetch('/delete/' + title, { method: 'POST' })
                     .then(() => {
                         loadNoteList(); // 删除后重新加载记事本列表
+                        updateBackupCount(); // 更新备份数量
                     });
             }
         }
@@ -348,6 +363,7 @@
                         document.getElementById('edit-title').value = '';
                         document.getElementById('edit-body').value = '';
                         document.getElementById('main-content').style.display = 'none'; // 隐藏编辑器
+                        updateBackupCount(); // 更新备份数量
                     })
                     .catch(error => {
                         showAlert("删除失败: " + error.message, false);
@@ -359,6 +375,20 @@
             const links = document.querySelectorAll('#notepad-list a');
             links.forEach(link => link.classList.remove('active'));
         }
+
+        function updateBackupCount() {
+            fetch('/backup-count')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('backup-count').textContent = `备份数量: ${data.count}`;
+                })
+                .catch(error => {
+                    console.error('Error fetching backup count:', error);
+                });
+        }
+
+        // 页面加载时更新备份数量
+        document.addEventListener('DOMContentLoaded', updateBackupCount);
     </script>
 </body>
 </html> 
