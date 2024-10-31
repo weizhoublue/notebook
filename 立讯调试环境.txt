@@ -1,0 +1,27 @@
+1 交换机
+网络设备管理配置好了
+ssh admin@10.64.253.30
+admin
+
+
+2 公司跳转服务器
+https://jumpserver.daocloud.io
+用个人的 vpn 账户登录
+weizhou.lan
+Lanwz=128068
+
+
+3  沐曦 软件下载
+
+软件中心账号：
+https://sw-download.metax-tech.com/
+
+账号：DaoCloud 
+密码：@7!RTyT7
+
+
+
+
+
+
+

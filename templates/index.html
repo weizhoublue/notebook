@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>记事本</title>
+    <title>记事本管理</title>
     <style>
         body {
             display: flex;
@@ -11,13 +11,21 @@
             font-family: Arial, sans-serif;
             height: 100vh;
         }
-        #notepad-list {
-            width: 25%;
+        #directory-list {
+            width: 20%;
             border-right: 1px solid #ccc;
             padding: 20px;
             box-sizing: border-box;
             overflow-y: auto;
             background-color: #f9f9f9;
+        }
+        #notepad-list {
+            width: 20%;
+            border-right: 1px solid #ccc;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            background-color: #f1f1f1;
         }
         #main-content {
             flex-grow: 1;
@@ -107,7 +115,7 @@
             color: black;
         }
         a.active {
-            color: green;
+            color: red;
         }
         .delete-button {
             background-color: #dc3545;
@@ -157,17 +165,18 @@
     </style>
 </head>
 <body>
+    <div id="directory-list">
+        <button class="button" onclick="createDirectory()">创建目录</button>
+        <button class="backup-count-button" id="backup-count">备份数量: 0</button>
+        <ul id="dir-list">
+            <!-- 目录列表 -->
+        </ul>
+    </div>
     <div id="notepad-list">
         <button class="button" onclick="showCreateForm()">创建记事本</button>
         <button class="delete-all-button" onclick="deleteAllNotes()">删除所有</button>
-        <button class="backup-count-button" id="backup-count">备份数量: 0</button>
         <ul id="note-list">
-            {{range .}}
-            <li>
-                <a href="#" onclick="editNote('{{.}}', this)">{{.}}</a>
-                <button class="delete-button" onclick="deleteNote('{{.}}')">删除</button>
-            </li>
-            {{end}}
+            <!-- 记事本列表 -->
         </ul>
     </div>
     <div id="main-content">
@@ -192,6 +201,8 @@
     </div>
 
     <script>
+        let currentDir = '';
+
         function showAlert(message, isSuccess) {
             const alertBox = document.getElementById('alert-box');
             const alertMessage = document.getElementById('alert-message');
@@ -213,8 +224,29 @@
             document.getElementById('modal-overlay').style.display = 'none'; // 隐藏遮罩层
         }
 
+        function selectDirectory(dirName) {
+            currentDir = dirName;
+            loadNoteList();
+            highlightSelectedDirectory(dirName);
+        }
+
+        function highlightSelectedDirectory(dirName) {
+            const links = document.querySelectorAll('#dir-list a');
+            links.forEach(link => {
+                if (link.textContent === dirName) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+        }
+
         function showCreateForm() {
-            document.getElementById('main-content').style.display = 'flex'; // 显示编辑器
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
+            document.getElementById('main-content').style.display = 'flex';
             document.getElementById('note-editor').style.display = 'flex';
             document.getElementById('operation-type').textContent = '创建';
             document.getElementById('edit-title').value = '';
@@ -225,6 +257,10 @@
         }
 
         function createNote() {
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
             const form = document.getElementById('edit-form');
             const title = document.getElementById('edit-title').value.trim();
             const body = document.getElementById('edit-body').value;
@@ -235,6 +271,7 @@
             }
 
             const formData = new FormData();
+            formData.append('dirName', currentDir);
             formData.append('title', title);
             formData.append('body', body);
 
@@ -251,9 +288,9 @@
                 }
                 showAlert("保存成功", true);
                 setTimeout(() => {
-                    loadNoteList(); // 重新加载记事本列表
-                    document.getElementById('main-content').style.display = 'none'; // 隐藏编辑器
-                    updateBackupCount(); // 更新备份数量
+                    loadNoteList(); // 自动刷新记事本列表
+                    document.getElementById('main-content').style.display = 'none';
+                    updateBackupCount();
                 }, 1000);
             })
             .catch(error => {
@@ -262,10 +299,14 @@
         }
 
         function editNote(title, element) {
-            fetch('/view/' + title, { headers: { 'Accept': 'text/plain' } })
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
+            fetch(`/view/${title}?dirName=${encodeURIComponent(currentDir)}`, { headers: { 'Accept': 'text/plain' } })
                 .then(response => response.text())
                 .then(body => {
-                    document.getElementById('main-content').style.display = 'flex'; // 显示编辑器
+                    document.getElementById('main-content').style.display = 'flex';
                     document.getElementById('note-editor').style.display = 'flex';
                     document.getElementById('operation-type').textContent = '编辑';
                     document.getElementById('edit-title').value = title;
@@ -290,6 +331,10 @@
         }
 
         function updateNote() {
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
             const form = document.getElementById('edit-form');
             const title = document.getElementById('edit-title').value.trim();
             const body = document.getElementById('edit-body').value;
@@ -301,6 +346,7 @@
             }
 
             const formData = new FormData();
+            formData.append('dirName', currentDir);
             formData.append('title', title);
             formData.append('body', body);
             formData.append('oldTitle', oldTitle);
@@ -317,12 +363,8 @@
                     return response.text().then(text => { throw new Error(text) });
                 }
                 showAlert("保存成功", true);
-                setTimeout(() => {
-                    loadNoteList(); // 重新加载记事本列表
-                    // 保持编辑器内容状态
-                    document.getElementById('main-content').style.display = 'flex';
-                    updateBackupCount(); // 更新备份数量
-                }, 1000);
+                loadNoteList(); // 立即刷新记事本列表
+                updateBackupCount();
             })
             .catch(error => {
                 showAlert("保存失败: " + error.message, false);
@@ -330,44 +372,76 @@
         }
 
         function loadNoteList() {
-            fetch('/')
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const newNoteList = doc.getElementById('note-list').innerHTML;
-                    document.getElementById('note-list').innerHTML = newNoteList;
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
+            fetch(`/notes?dirName=${encodeURIComponent(currentDir)}`)
+                .then(response => response.json())
+                .then(notes => {
+                    const noteList = document.getElementById('note-list');
+                    noteList.innerHTML = '';
+                    notes.forEach(note => {
+                        const li = document.createElement('li');
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.textContent = note;
+                        link.onclick = () => editNote(note, link);
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = '删除';
+                        deleteButton.className = 'delete-button';
+                        deleteButton.onclick = () => deleteNote(note);
+                        li.appendChild(link);
+                        li.appendChild(deleteButton);
+                        noteList.appendChild(li);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading note list:', error);
                 });
         }
 
         function deleteNote(title) {
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
             if (confirm("确定要删除这个记事本吗？")) {
-                fetch('/delete/' + title, { method: 'POST' })
+                fetch(`/delete/${title}?dirName=${encodeURIComponent(currentDir)}`, { method: 'POST' })
                     .then(() => {
-                        loadNoteList(); // 删除后重新加载记事本列表
-                        updateBackupCount(); // 更新备份数量
+                        loadNoteList();
+                        updateBackupCount();
                     });
             }
         }
 
         function deleteAllNotes() {
+            if (!currentDir) {
+                showAlert("请先选择一个目录", false);
+                return;
+            }
             if (confirm("确定要删除所有记事本吗？")) {
-                fetch('/delete-all', { method: 'POST' })
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.text().then(text => { throw new Error(text) });
-                        }
-                        showAlert("所有记事本已删除", true);
-                        loadNoteList(); // 删除所有后重新加载记事本列表
-                        // 清空编辑器内容
-                        document.getElementById('edit-title').value = '';
-                        document.getElementById('edit-body').value = '';
-                        document.getElementById('main-content').style.display = 'none'; // 隐藏编辑器
-                        updateBackupCount(); // 更新备份数量
-                    })
-                    .catch(error => {
-                        showAlert("删除失败: " + error.message, false);
-                    });
+                fetch('/delete-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `dirName=${encodeURIComponent(currentDir)}`
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    showAlert("所有记事本已删除", true);
+                    loadNoteList();
+                    document.getElementById('edit-title').value = '';
+                    document.getElementById('edit-body').value = '';
+                    document.getElementById('main-content').style.display = 'none';
+                    updateBackupCount();
+                })
+                .catch(error => {
+                    showAlert("删除失败: " + error.message, false);
+                });
             }
         }
 
@@ -387,8 +461,84 @@
                 });
         }
 
-        // 页面加载时更新备份数量
-        document.addEventListener('DOMContentLoaded', updateBackupCount);
+        function createDirectory() {
+            const dirName = prompt("请输入要创建的目录名：");
+            if (dirName) {
+                fetch('/create-dir', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `dirName=${encodeURIComponent(dirName)}`
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    showAlert("目录创建成功", true);
+                    loadDirectoryList(); // 自动刷新目录列表
+                    updateBackupCount();
+                })
+                .catch(error => {
+                    showAlert("目录创建失败: " + error.message, false);
+                });
+            }
+        }
+
+        function deleteDirectory(dirName) {
+            if (confirm(`确定要删除目录 ${dirName} 吗？`)) {
+                fetch('/delete-dir', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `dirName=${encodeURIComponent(dirName)}`
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    showAlert("目录删除成功", true);
+                    loadDirectoryList(); // 自动刷新目录列表
+                    updateBackupCount();
+                })
+                .catch(error => {
+                    showAlert("目录删除失败: " + error.message, false);
+                });
+            }
+        }
+
+        function loadDirectoryList() {
+            fetch('/list-dirs')
+                .then(response => response.json())
+                .then(directories => {
+                    const dirList = document.getElementById('dir-list');
+                    dirList.innerHTML = '';
+                    directories.forEach(dir => {
+                        const li = document.createElement('li');
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.textContent = dir;
+                        link.onclick = () => selectDirectory(dir);
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = '删除';
+                        deleteButton.className = 'delete-button';
+                        deleteButton.onclick = () => deleteDirectory(dir);
+                        li.appendChild(link);
+                        li.appendChild(deleteButton);
+                        dirList.appendChild(li);
+                    });
+                    updateBackupCount(); // 在加载目录列表时更新备份数量
+                })
+                .catch(error => {
+                    console.error('Error loading directory list:', error);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateBackupCount();
+            loadDirectoryList();
+        });
     </script>
 </body>
 </html> 
