@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -19,8 +21,36 @@ func main() {
 	http.HandleFunc("/delete/", deleteHandler)
 	http.HandleFunc("/search", searchHandler)
 
-	fmt.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// 启动服务器
+	go func() {
+		fmt.Println("Server started at :8080")
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
+
+	// 打开浏览器
+	openBrowser("http://localhost:8080")
+
+	// 阻止主协程退出
+	select {}
+}
+
+func openBrowser(url string) {
+	var err error
+
+	switch os := runtime.GOOS; os {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+
+	if err != nil {
+		log.Fatalf("Failed to open browser: %v", err)
+	}
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
