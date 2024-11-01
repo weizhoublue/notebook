@@ -232,10 +232,28 @@
             document.getElementById('modal-overlay').style.display = 'none'; // 隐藏遮罩层
         }
 
+        function confirmDiscardChanges(callback) {
+            if (document.getElementById('edited-label')) {
+                // 如果有未保存的更改，显示确认弹窗
+                const discard = confirm("内容已经被修改，是否放弃修改？");
+                if (!discard) {
+                    return; // 用户选择不放弃更改，停止操作
+                }
+            }
+            callback(); // 用户选择放弃更改，继续操作
+        }
+
         function selectDirectory(dirName) {
-            currentDir = dirName;
-            loadNoteList();
-            highlightSelectedDirectory(dirName);
+            confirmDiscardChanges(() => {
+                currentDir = dirName;
+                loadNoteList();
+                highlightSelectedDirectory(dirName);
+
+                // 清空编辑框和标题框
+                document.getElementById('edit-title').value = '';
+                document.getElementById('edit-body').value = '';
+                document.getElementById('main-content').style.display = 'none'; // 隐藏编辑区域
+            });
         }
 
         function highlightSelectedDirectory(dirName) {
@@ -250,18 +268,20 @@
         }
 
         function showCreateForm() {
-            if (!currentDir) {
-                showAlert("请先选择一个目录", false);
-                return;
-            }
-            document.getElementById('main-content').style.display = 'flex';
-            document.getElementById('note-editor').style.display = 'flex';
-            document.getElementById('operation-type').textContent = '创建';
-            document.getElementById('edit-title').value = '';
-            document.getElementById('edit-body').value = '';
-            document.getElementById('edit-form').action = '/create';
-            document.getElementById('isEdit').value = 'false';
-            clearActiveLinks();
+            confirmDiscardChanges(() => {
+                if (!currentDir) {
+                    showAlert("请先选择一个目录", false);
+                    return;
+                }
+                document.getElementById('main-content').style.display = 'flex';
+                document.getElementById('note-editor').style.display = 'flex';
+                document.getElementById('operation-type').textContent = '创建';
+                document.getElementById('edit-title').value = '';
+                document.getElementById('edit-body').value = '';
+                document.getElementById('edit-form').action = '/create';
+                document.getElementById('isEdit').value = 'false';
+                clearActiveLinks();
+            });
         }
 
         function createNote() {
@@ -307,27 +327,29 @@
         }
 
         function editNote(title, element) {
-            if (!currentDir) {
-                showAlert("请先选择一个目录", false);
-                return;
-            }
-            fetch(`/view/${title}?dirName=${encodeURIComponent(currentDir)}`, { headers: { 'Accept': 'text/plain' } })
-                .then(response => response.text())
-                .then(body => {
-                    document.getElementById('main-content').style.display = 'flex';
-                    document.getElementById('note-editor').style.display = 'flex';
-                    document.getElementById('operation-type').textContent = '编辑';
-                    document.getElementById('edit-title').value = title;
-                    document.getElementById('edit-body').value = body;
-                    document.getElementById('edit-form').action = '/edit';
-                    document.getElementById('isEdit').value = 'true';
-                    document.getElementById('oldTitle').value = title;
-                    clearActiveLinks();
-                    if (element) {
-                        element.classList.add('active');
-                    }
-                    clearEditedLabel(); // 清除 "edited" 标记
-                });
+            confirmDiscardChanges(() => {
+                if (!currentDir) {
+                    showAlert("请先选择一个目录", false);
+                    return;
+                }
+                fetch(`/view/${title}?dirName=${encodeURIComponent(currentDir)}`, { headers: { 'Accept': 'text/plain' } })
+                    .then(response => response.text())
+                    .then(body => {
+                        document.getElementById('main-content').style.display = 'flex';
+                        document.getElementById('note-editor').style.display = 'flex';
+                        document.getElementById('operation-type').textContent = '编辑';
+                        document.getElementById('edit-title').value = title;
+                        document.getElementById('edit-body').value = body;
+                        document.getElementById('edit-form').action = '/edit';
+                        document.getElementById('isEdit').value = 'true';
+                        document.getElementById('oldTitle').value = title;
+                        clearActiveLinks();
+                        if (element) {
+                            element.classList.add('active');
+                        }
+                        clearEditedLabel(); // 清除 "edited" 标记
+                    });
+            });
         }
 
         function saveNote() {
@@ -425,33 +447,35 @@
         }
 
         function deleteAllNotes() {
-            if (!currentDir) {
-                showAlert("请先选择一个目录", false);
-                return;
-            }
-            if (confirm("确定要删除所有记事本吗？")) {
-                fetch('/delete-all', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `dirName=${encodeURIComponent(currentDir)}`
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.text().then(text => { throw new Error(text) });
-                    }
-                    showAlert("所有记事本已删除", true);
-                    loadNoteList();
-                    document.getElementById('edit-title').value = '';
-                    document.getElementById('edit-body').value = '';
-                    document.getElementById('main-content').style.display = 'none';
-                    updateBackupCount();
-                })
-                .catch(error => {
-                    showAlert("删除失败: " + error.message, false);
-                });
-            }
+            confirmDiscardChanges(() => {
+                if (!currentDir) {
+                    showAlert("请先选择一个目录", false);
+                    return;
+                }
+                if (confirm("确定要删除所有记事本吗？")) {
+                    fetch('/delete-all', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `dirName=${encodeURIComponent(currentDir)}`
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.text().then(text => { throw new Error(text) });
+                        }
+                        showAlert("所有记事本已删除", true);
+                        loadNoteList();
+                        document.getElementById('edit-title').value = '';
+                        document.getElementById('edit-body').value = '';
+                        document.getElementById('main-content').style.display = 'none';
+                        updateBackupCount();
+                    })
+                    .catch(error => {
+                        showAlert("删除失败: " + error.message, false);
+                    });
+                }
+            });
         }
 
         function clearActiveLinks() {
@@ -471,27 +495,29 @@
         }
 
         function createDirectory() {
-            const dirName = prompt("请输入要创建的目录名：");
-            if (dirName) {
-                fetch('/create-dir', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `dirName=${encodeURIComponent(dirName)}`
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.text().then(text => { throw new Error(text) });
-                    }
-                    showAlert("目录创建成功", true);
-                    loadDirectoryList(); // 自动刷新目录列表
-                    updateBackupCount();
-                })
-                .catch(error => {
-                    showAlert("目录创建失败: " + error.message, false);
-                });
-            }
+            confirmDiscardChanges(() => {
+                const dirName = prompt("请输入要创建的目录名：");
+                if (dirName) {
+                    fetch('/create-dir', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `dirName=${encodeURIComponent(dirName)}`
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.text().then(text => { throw new Error(text) });
+                        }
+                        showAlert("目录创建成功", true);
+                        loadDirectoryList(); // 自动刷新目录列表
+                        updateBackupCount();
+                    })
+                    .catch(error => {
+                        showAlert("目录创建失败: " + error.message, false);
+                    });
+                }
+            });
         }
 
         function deleteDirectory(dirName) {
@@ -577,6 +603,24 @@
             // 在保存时清除 edited 标记
             const saveButton = document.querySelector('#editor-header .button');
             saveButton.addEventListener('click', clearEditedLabel);
+
+            // 监听 Tab 键输入
+            bodyTextarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = this.selectionStart;
+                    const end = this.selectionEnd;
+
+                    // 设置 textarea 的值为：文本前 + 四个空格 + 文本后
+                    this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+
+                    // 将光标位置移动插入的四个空格之后
+                    this.selectionStart = this.selectionEnd = start + 4;
+
+                    // 显示 "edited" 标记
+                    markAsEdited();
+                }
+            });
         });
     </script>
 </body>
