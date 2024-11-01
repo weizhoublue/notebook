@@ -233,12 +233,14 @@
         }
 
         function confirmDiscardChanges(callback) {
-            if (document.getElementById('edited-label')) {
+            const editedLabel = document.getElementById('edited-label');
+            if (editedLabel) {
                 // 如果有未保存的更改，显示确认弹窗
                 const discard = confirm("内容已经被修改，是否放弃修改？");
                 if (!discard) {
                     return; // 用户选择不放弃更改，停止操作
                 }
+                clearEditedLabel(); // 用户选择放弃更改，清除 "edited" 标记
             }
             callback(); // 用户选择放弃更改，继续操作
         }
