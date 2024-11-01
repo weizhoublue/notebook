@@ -543,9 +543,39 @@
                 });
         }
 
+        function markAsEdited() {
+            const saveButton = document.querySelector('#editor-header .button');
+            const editedLabel = document.getElementById('edited-label');
+            if (!editedLabel) {
+                const label = document.createElement('span');
+                label.id = 'edited-label';
+                label.textContent = ' (edited)';
+                label.style.color = 'red';
+                saveButton.parentNode.insertBefore(label, saveButton.nextSibling);
+            }
+        }
+
+        function clearEditedLabel() {
+            const editedLabel = document.getElementById('edited-label');
+            if (editedLabel) {
+                editedLabel.remove();
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             updateBackupCount();
             loadDirectoryList();
+
+            // 监听标题和内容的变化
+            const titleInput = document.getElementById('edit-title');
+            const bodyTextarea = document.getElementById('edit-body');
+
+            titleInput.addEventListener('input', markAsEdited);
+            bodyTextarea.addEventListener('input', markAsEdited);
+
+            // 在保存时清除 edited 标记
+            const saveButton = document.querySelector('#editor-header .button');
+            saveButton.addEventListener('click', clearEditedLabel);
         });
     </script>
 </body>
