@@ -13,7 +13,8 @@
             font-size: 14px;
         }
         #directory-list {
-            width: 20%;
+            flex: 0 1 20%;
+            max-width: 25%;
             border-right: 1px solid #ccc;
             padding: 20px;
             box-sizing: border-box;
@@ -21,7 +22,8 @@
             background-color: #f9f9f9;
         }
         #notepad-list {
-            width: 20%;
+            flex: 0 1 20%;
+            max-width: 25%;
             border-right: 1px solid #ccc;
             padding: 20px;
             box-sizing: border-box;
@@ -73,36 +75,36 @@
             background-color: #28a745;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 5px 10px;
             cursor: pointer;
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             white-space: nowrap;
-            font-size: 14px;
+            font-size: 12px;
         }
         .delete-all-button {
             background-color: #dc3545;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 5px 10px;
             cursor: pointer;
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             white-space: nowrap;
             margin-left: 10px;
-            font-size: 14px;
+            font-size: 12px;
         }
         .backup-count-button {
             background-color: #007bff;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 5px 10px;
             cursor: default;
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             white-space: nowrap;
             margin-left: 10px;
-            font-size: 14px;
+            font-size: 12px;
         }
         ul {
             list-style-type: none;
@@ -210,6 +212,33 @@
 
     <script>
         let currentDir = '';
+        let autoSaveInterval;
+        let isEditing = false;
+        let lastEditTime = Date.now();
+
+        function startAutoSave() {
+            if (autoSaveInterval) {
+                clearInterval(autoSaveInterval);
+            }
+            autoSaveInterval = setInterval(() => {
+                const currentTime = Date.now();
+                if (currentTime - lastEditTime >= 10000) { // 如果超过10秒没有编辑
+                    const isEdit = document.getElementById('isEdit').value === 'true';
+                    if (isEdit) {
+                        updateNote().then(() => clearEditedLabel());
+                    } else {
+                        createNote().then(() => clearEditedLabel());
+                    }
+                }
+            }, 10000); // 每10秒检查一次
+        }
+
+        function stopAutoSave() {
+            if (autoSaveInterval) {
+                clearInterval(autoSaveInterval);
+                autoSaveInterval = null;
+            }
+        }
 
         function showAlert(message, isSuccess) {
             const alertBox = document.getElementById('alert-box');
@@ -287,44 +316,48 @@
         }
 
         function createNote() {
-            if (!currentDir) {
-                showAlert("请先选择一个目录", false);
-                return;
-            }
-            const form = document.getElementById('edit-form');
-            const title = document.getElementById('edit-title').value.trim();
-            const body = document.getElementById('edit-body').value;
-
-            if (!title) {
-                showAlert("标题不能为空", false);
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('dirName', currentDir);
-            formData.append('title', title);
-            formData.append('body', body);
-
-            fetch('/create', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (response.status === 409) {
-                    throw new Error("该标题的记事本已存在");
+            return new Promise((resolve, reject) => {
+                if (!currentDir) {
+                    showAlert("请先选择一个目录", false);
+                    return reject("No directory selected");
                 }
-                if (!response.ok) {
-                    return response.text().then(text => { throw new Error(text) });
+                const form = document.getElementById('edit-form');
+                const title = document.getElementById('edit-title').value.trim();
+                const body = document.getElementById('edit-body').value;
+
+                if (!title) {
+                    showAlert("标题不能为空", false);
+                    return reject("Title is empty");
                 }
-                showAlert("保存成功", true);
-                setTimeout(() => {
-                    loadNoteList(); // 自动刷新记事本列表
-                    document.getElementById('main-content').style.display = 'none';
-                    updateBackupCount();
-                }, 1000);
-            })
-            .catch(error => {
-                showAlert("保存失败: " + error.message, false);
+
+                const formData = new FormData();
+                formData.append('dirName', currentDir);
+                formData.append('title', title);
+                formData.append('body', body);
+
+                fetch('/create', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (response.status === 409) {
+                        throw new Error("该标题的记事本已存在");
+                    }
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    showAlert("保存成功", true);
+                    setTimeout(() => {
+                        loadNoteList(); // 自动刷新记事本列表
+                        document.getElementById('main-content').style.display = 'none';
+                        updateBackupCount();
+                    }, 1000);
+                    resolve();
+                })
+                .catch(error => {
+                    showAlert("保存失败: " + error.message, false);
+                    reject(error);
+                });
             });
         }
 
@@ -364,43 +397,47 @@
         }
 
         function updateNote() {
-            if (!currentDir) {
-                showAlert("请先选择一个目录", false);
-                return;
-            }
-            const form = document.getElementById('edit-form');
-            const title = document.getElementById('edit-title').value.trim();
-            const body = document.getElementById('edit-body').value;
-            const oldTitle = document.getElementById('oldTitle').value;
-
-            if (!title) {
-                showAlert("标题不能为空", false);
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('dirName', currentDir);
-            formData.append('title', title);
-            formData.append('body', body);
-            formData.append('oldTitle', oldTitle);
-
-            fetch('/edit', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (response.status === 409) {
-                    throw new Error("该标题的记事本已存在");
+            return new Promise((resolve, reject) => {
+                if (!currentDir) {
+                    showAlert("请先选择一个目录", false);
+                    return reject("No directory selected");
                 }
-                if (!response.ok) {
-                    return response.text().then(text => { throw new Error(text) });
+                const form = document.getElementById('edit-form');
+                const title = document.getElementById('edit-title').value.trim();
+                const body = document.getElementById('edit-body').value;
+                const oldTitle = document.getElementById('oldTitle').value;
+
+                if (!title) {
+                    showAlert("标题不能为空", false);
+                    return reject("Title is empty");
                 }
-                showAlert("保存成功", true);
-                loadNoteList(); // 立即刷新记事本列表
-                updateBackupCount();
-            })
-            .catch(error => {
-                showAlert("保存失败: " + error.message, false);
+
+                const formData = new FormData();
+                formData.append('dirName', currentDir);
+                formData.append('title', title);
+                formData.append('body', body);
+                formData.append('oldTitle', oldTitle);
+
+                fetch('/edit', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (response.status === 409) {
+                        throw new Error("该标题的记事本已存在");
+                    }
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    showAlert("保存成功", true);
+                    loadNoteList(); // 立即刷新记事本列表
+                    updateBackupCount();
+                    resolve();
+                })
+                .catch(error => {
+                    showAlert("保存失败: " + error.message, false);
+                    reject(error);
+                });
             });
         }
 
@@ -573,6 +610,7 @@
         }
 
         function markAsEdited() {
+            lastEditTime = Date.now(); // 更新最后编辑时间
             const saveButton = document.querySelector('#editor-header .button');
             const editedLabel = document.getElementById('edited-label');
             if (!editedLabel) {
@@ -582,6 +620,7 @@
                 label.style.color = 'red';
                 saveButton.parentNode.insertBefore(label, saveButton.nextSibling);
             }
+            startAutoSave(); // 开始自动保存
         }
 
         function clearEditedLabel() {
@@ -589,6 +628,7 @@
             if (editedLabel) {
                 editedLabel.remove();
             }
+            stopAutoSave(); // 停止自动保存
         }
 
         document.addEventListener('DOMContentLoaded', () => {
